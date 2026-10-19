@@ -1,9 +1,30 @@
 #!/usr/bin/env python3
 import argparse
 import os
+import anndata as ad
 import scanpy as sc
 import pandas as pd
 import numpy as np
+
+
+def _sanitize_strings_for_compat(adata):
+    """Write standard string-array datasets for downstream compatibility."""
+    if hasattr(ad, "settings") and hasattr(ad.settings, "allow_write_nullable_strings"):
+        ad.settings.allow_write_nullable_strings = False
+    frames = [adata.obs, adata.var]
+    if adata.raw is not None:
+        frames.append(adata.raw.var)
+    for df in frames:
+        df.index = df.index.astype(object)
+        for col in df.columns:
+            if isinstance(df[col].dtype, pd.StringDtype):
+                df[col] = df[col].fillna("").astype(object)
+            elif isinstance(df[col].dtype, pd.CategoricalDtype) and isinstance(
+                df[col].cat.categories.dtype, pd.StringDtype
+            ):
+                df[col] = df[col].cat.rename_categories(
+                    df[col].cat.categories.astype(object)
+                )
 
 
 def main():
@@ -42,6 +63,7 @@ def main():
         print(f"Warning: {obs_file} not found. Skipping CIN calculation.")
         adata.obs['cnv_diversity_index'] = np.nan
 
+    _sanitize_strings_for_compat(adata)
     adata.write_h5ad(args.out_h5ad)
 
 
